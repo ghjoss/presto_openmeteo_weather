@@ -9,6 +9,7 @@ import picovector
 import openmeteo
 import ntptime
 import urequests as requests
+import random
 
 if not TESTING:
     def print(*args, **kwargs):
@@ -234,12 +235,25 @@ def in_range(cur_h: int, start_h: int, end_h: int) -> bool:
     else:                                     # wraps past midnight
         return cur_h >= start_h or cur_h < end_h
 
+"""
+    randomize the wait time between failed polls by +/- 1 ms to 20% of the original wait times.
+"""    
+def randomize_time(ms):
+    r1 = random.random()
+    if r1 < .5:
+        multiplier = -1
+    else:
+        multiplier = 1
+    return int(ms + multiplier * random.randint(0,ms / 5))
+
 def main():
     try:
         initialize()
         sleeping = False
         global connected, query_interval, current_view_state, view_states, START_HOUR, END_HOUR
- 
+        data = None
+        failure_retry_interval = 400 # 400ms = .4 secs
+
         if connected:
             current_view_state = CURRENT_WEATHER_VIEW  #CURRENT_WEATHER_VIEW, FORECAST_VIEW, PRECIPITATION_VIEW
             while True:
@@ -247,8 +261,13 @@ def main():
                     data = openmeteo.get_forecast_data()
             
                 if data is None:
-                    raise RuntimeError("Unable to fetch weather data. Program terminating.")    
-
+                    if failure_retry_interval <= 12800: # 6 attempts
+                        failure_retry_interval *= 2
+                        time.sleep_ms(randomize_time(failure_retry_interval))
+                        continue
+                    else:
+                        raise RuntimeError("Unable to fetch weather data. Program terminating.")    
+                failure_retry_interval = 400
                 now_list = get_now_list(data["utc_offset_seconds"])
                 print(now_list)
                 if len(now_list) > 0:
