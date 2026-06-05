@@ -130,7 +130,8 @@ def format_current_weather_data(data, city):
     current_weather_code = current["weather_code"]
     current_rel_humidity = current["relative_humidity_2m"]
     rel_hum_units = data["current_units"]["relative_humidity_2m"]
-    current_uv_index = current["uv_index"]
+
+    current_uv_index = data["current"]["uv_index"]
  
     df.cls()
     forecast_time = current["time"].split("T")[1]
@@ -433,6 +434,95 @@ def format_forecast_data(data):
     df.refresh()
     print("...end format_forecast_data()")
 
+def format_three_day_forecast_data(data):
+    print("format_three_day_forecast_data()")
+    three_day_forecast_anchors = [85, 130, 185, 230]
+
+    global header_pen, data_pen, alert_pen, background_pen, date_pen
+    
+    # starting row of text
+    row_y = 20
+
+    current = data["current"]
+    hourly = data["hourly"]
+
+   
+    temperature_label = data["hourly_units"]["temperature_2m"]
+    wind_speed_label = data["hourly_units"]["wind_speed_10m"]
+    precip_units = (data["hourly_units"]["precipitation"])[:2]
+
+    # iterate through the hours of data to find the max temperature, max wind speed, and total 
+    # precipitation for each of the next three days. 
+    # We will use this to create a simple 3-day forecast summary.
+    three_day_forecast = []
+    old_date = ""
+    for i in range(0, len(hourly["time"])):
+        date_time_text = hourly["time"][i]
+        date_text = date_time_text.split("T")[0] # yyyy-mo-dd
+        if i == 0:
+            old_date = date_text
+            max_temp = hourly["temperature_2m"][i]
+            max_wind = hourly["wind_speed_10m"][i]
+            total_precip = hourly["precipitation"][i]
+            continue
+        if date_text == old_date:
+            if hourly["temperature_2m"][i] > max_temp:
+                max_temp = hourly["temperature_2m"][i]
+            if hourly["wind_speed_10m"][i] > max_wind:
+                max_wind = hourly["wind_speed_10m"][i]
+            total_precip += hourly["precipitation"][i]
+            continue
+        else:
+            if old_date != "":
+                three_day_forecast.append({old_date: {"max_temp": max_temp, "max_wind": max_wind, "total_precip": total_precip}})
+            old_date = date_text
+            max_temp = hourly["temperature_2m"][i]
+            max_wind = hourly["wind_speed_10m"][i]
+            total_precip = hourly["precipitation"][i]
+    three_day_forecast.append({old_date: {"max_temp": max_temp, "max_wind": max_wind, "total_precip": total_precip}})
+
+    SCALE = df.default_scale
+
+    # Format and print the header rows for the forecast data.
+    line = [f"3 day forecast"]
+    df.draw_vector_row(line, row_y, date_pen, anchors=[])
+    row_y += df.row_step
+
+    line = ["","Max","Max","Total"]
+    df.draw_vector_row(line,row_y,header_pen,anchors=three_day_forecast_anchors)
+    row_y += df.row_step
+
+    line=["","Temp","Wind","Precip."]
+    df.draw_vector_row(line,row_y,header_pen,anchors=three_day_forecast_anchors)
+    row_y += df.row_step
+
+    line = ["",f"({temperature_label})",f"({wind_speed_label})",f"({precip_units[:2]})"]
+    df.draw_vector_row(line,row_y,header_pen,anchors=three_day_forecast_anchors)
+    row_y += 5
+    
+    df.draw_vector_row(["_" * 45], row_y, header_pen,anchors=[])
+    row_y += df.row_step
+
+    try:
+        for max_data in three_day_forecast:
+            for date_key, metrics in max_data.items():
+                date_display = f"{date_key}"
+
+                line = [f"{date_display}",f"{metrics['max_temp']:02.1f}",f"{metrics['max_wind']:4.1f}",f"{metrics['total_precip']:2.3f}"]
+                df.draw_vector_row(line, row_y, data_pen, anchors=three_day_forecast_anchors)    
+                row_y += df.row_step
+
+                print(line)
+    except Exception as e:
+        print(f"Error processing three day forecast data: {e}")
+
+    try:
+        df.refresh()
+    except Exception as e:
+        print(f"Error refreshing display: {e}")
+
+    print("...end format_three_day_forecast_data()")
+
 def get_forecast_data():
     
     if UNITS == "imperial":
@@ -450,7 +540,7 @@ def get_forecast_data():
         f"&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,"
         f"rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m,relative_humidity_2m,uv_index"
         f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m,uv_index"
-        f"&timezone={TIMEZONE}&forecast_days=2"
+        f"&timezone=auto&forecast_days=3"
 		f"&wind_speed_unit={wind_speed_unit}&temperature_unit={temperature_unit}&precipitation_unit={precipitation_unit}"
         )
     print(url)

@@ -32,10 +32,12 @@ def initialize():
     global connected, query_interval, now, city
     query_interval = QUERY_INTERVAL
 
-    global current_view_state, FORECAST_VIEW, CURRENT_WEATHER_VIEW, PRECIPITATION_VIEW
+    global current_view_state, FORECAST_VIEW, CURRENT_WEATHER_VIEW, PRECIPITATION_VIEW, THREE_DAY_FORECAST_VIEW
     global START_HOUR, END_HOUR
+    
     CURRENT_WEATHER_VIEW = 1
     PRECIPITATION_VIEW = 2
+    THREE_DAY_FORECAST_VIEW = 3
     FORECAST_VIEW = 0
     
     print("Starting...")
@@ -81,6 +83,17 @@ def initialize():
     vector.set_antialiasing(picovector.ANTIALIAS_BEST)
     print("...Presto initialized, call display_functions.init_provider...)")
     
+    # get UTC offset seconds for the location, which will be used to determine when to sleep the display
+    global UTC_OFFSET_SECONDS
+    try:
+        UTC_OFFSET_SECONDS = 0
+        url = f"https://timeapi.io/api/timezone/coordinate?latitude={LATITUDE}&longitude={LONGITUDE}"
+        res = requests.get(url,timeout=5)
+        data = res.json()
+        UTC_OFFSET_SECONDS = data["currentUtcOffset"]["seconds"]
+    except Exception as e:
+        print(f"Unable to get UTC offset seconds for the location, defaulting to 0. Error: {e}")
+
     df.init_provider(presto, rotational_shift=-15)
     #df.init_provider(presto, rotational_shift=-22,font="AdventPro-Black.af",scale=20)
 
@@ -138,7 +151,7 @@ def responsive_wait(minutes, data, sleeping):
         if not lcl_sleeping:
             if sleeping and get_weather_once: # if sleeping == True and lcl_sleeping == False:there was a touch, update weather
                 get_weather_once = False
-                data = openmeteo.get_forecast_data()
+                data = get_forecast_with_retries()
             if viewStateChanged:
                 df.cls()
                 if current_view_state == FORECAST_VIEW:
@@ -147,6 +160,8 @@ def responsive_wait(minutes, data, sleeping):
                     openmeteo.format_current_weather_data(data, city)
                 elif current_view_state == PRECIPITATION_VIEW:
                     openmeteo.format_precipitation_data(data)
+                elif current_view_state == THREE_DAY_FORECAST_VIEW:
+                    openmeteo.format_three_day_forecast_data(data)
                 viewStateChanged = False
 
         presto.touch_poll()
@@ -178,11 +193,11 @@ def responsive_wait(minutes, data, sleeping):
                 # check for swipe left,right
                 elif adx >= ady: # horizontal swipes dominate
                     if dx > 0: # right
-                        current_view_state = (current_view_state + 1) % 3
+                        current_view_state = (current_view_state + 1) % 4
                         viewStateChanged = True
                         print("Swiped right, switching view.")
                     else: # left
-                        current_view_state = (current_view_state - 1) % 3
+                        current_view_state = (current_view_state - 1) % 4
                         viewStateChanged = True
                         print("Swiped left, switching view.")
                 # if we have processed swipe left or right, do not
@@ -204,10 +219,11 @@ def responsive_wait(minutes, data, sleeping):
         time.sleep_ms(20)
     return
 
-def get_now_list(UTC_offset):
+def get_now_list():
+    global UTC_OFFSET_SECONDS
     try:
         ntptime.settime()
-        now = time.gmtime(time.time() + UTC_offset)
+        now = time.gmtime(time.time() + UTC_OFFSET_SECONDS)
         return [now[3],now[4]]
     except:
         return []
@@ -246,29 +262,46 @@ def randomize_time(ms):
         multiplier = 1
     return int(ms + multiplier * random.randint(0,ms / 5))
 
+def get_forecast_with_retries(max_retries=6, initial_interval=400):
+    """
+    Attempt to retrieve forecast data with retries and exponential backoff.
+    If retrieval fails after the specified number of retries, raises a RuntimeError.
+
+    Args:
+        max_retries (int): Maximum number of retry attempts.
+        initial_interval (int): Initial wait time in milliseconds before the first retry.
+
+    Returns:
+        dict: Forecast data if retrieval is successful.
+
+    Raises:
+        RuntimeError: If unable to retrieve forecast data after maximum retries.
+    """
+    interval = initial_interval
+    for attempt in range(max_retries):
+        data = openmeteo.get_forecast_data()
+        if data is not None:
+            return data
+        else:
+            print(f"Attempt {attempt + 1} failed. Retrying in {interval} ms...")
+            time.sleep_ms(interval)
+            interval *= 2  # Exponential backoff
+
+    raise RuntimeError("Unable to retrieve forecast data after multiple attempts.")
 def main():
     try:
         initialize()
         sleeping = False
         global connected, query_interval, current_view_state, view_states, START_HOUR, END_HOUR
         data = None
-        failure_retry_interval = 400 # 400ms = .4 secs
 
         if connected:
             current_view_state = CURRENT_WEATHER_VIEW  #CURRENT_WEATHER_VIEW, FORECAST_VIEW, PRECIPITATION_VIEW
             while True:
                 if not sleeping:
-                    data = openmeteo.get_forecast_data()
+                    data = get_forecast_with_retries()
             
-                if data is None:
-                    if failure_retry_interval <= 12800: # 6 attempts
-                        failure_retry_interval *= 2
-                        time.sleep_ms(randomize_time(failure_retry_interval))
-                        continue
-                    else:
-                        raise RuntimeError("Unable to fetch weather data. Program terminating.")    
-                failure_retry_interval = 400
-                now_list = get_now_list(data["utc_offset_seconds"])
+                now_list = get_now_list()
                 print(now_list)
                 if len(now_list) > 0:
                     sleeping = not in_range(now_list[0], START_HOUR, END_HOUR)
