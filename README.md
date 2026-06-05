@@ -4,7 +4,7 @@
 
 This micropython application polls https://api.open-meteo.com to get the forecast for a given latitude and longitude. Through control files the user can specify their wifi SSID and password, the frequency of polling, the longitude and latitude, units (metric/imperial) and the number of lines of data to display.
 
-There are three screens of displayable data, accessible by swiping left and right:
+There are four screens of displayable data, accessible by swiping left and right:
 
 * Current weather. Includes: temperature, UV index, wind speed, precipitation data.
 
@@ -24,6 +24,11 @@ There are three screens of displayable data, accessible by swiping left and righ
 <img src="./weather_precipitation.jpg">
 </div>
 
+* Three day forecast of maximum daily temperature, maximum daily windspeed and total precipitation.
+
+<div align=center>
+<img src="./weather_3day.jpg">
+</div>
 ## Modules
 
 ### main.py
@@ -142,7 +147,9 @@ Only four colors are used. You can modify the colors to suit your tastes. To sav
 
 ### Interface notes
 
-The initial screen is the current weather based upon the last poll of the server. Swipe left on the screen to see the hourly precipitation forecast. Swipe right from the current weather to see the hourly temperature/wind speed/UVI index forecast. The screens are cyclic. Swiping left or right three times in a row will return the the screen at the start of a cycle (meaning: if you are on the precipitation screen and swipe right 3X, you will return to the precipitation screen).
+The initial screen is the current weather based upon the last poll of the server. Swipe left on the screen to see the hourly precipitation forecast. Swipe right from the current weather to see the hourly temperature/wind speed/UVI index forecast. Swipe left or right two times from the current weather screen to see the three day forecast.
+
+The screens are cyclic. Swiping left or right four times in a row will return the the screen at the start of a cycle (meaning: if you are on the precipitation screen and swipe right 4 times, you will return to the precipitation screen).
 
 Swiping down dims the display by 5%. Swiping up increases the brightness by 5%. Initial brightness is 50%.
 
